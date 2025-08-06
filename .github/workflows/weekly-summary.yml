@@ -27,10 +27,13 @@ jobs:
           TOKEN_GITHUB: ${{ secrets.TOKEN_GITHUB }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
-          echo "📊 Generating weekly summary..."
-          OUTPUT=$(node diary.js --polished)
-          echo "summary<<EOF" >> $GITHUB_OUTPUT
-          echo "$OUTPUT" >> $GITHUB_OUTPUT
+          RAW=$(node diary.js)
+          POLISHED=$(node diary.js --polished)
+          echo "raw<<EOF" >> $GITHUB_OUTPUT
+          echo "$RAW" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+          echo "polished<<EOF" >> $GITHUB_OUTPUT
+          echo "$POLISHED" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
       - name: Send to Slack
@@ -40,7 +43,22 @@ jobs:
           token: ${{ secrets.SLACK_BOT_TOKEN }}
           payload: |
             channel: ${{ secrets.SLACK_CHANNEL_ID }}
-            text: "*Weekly Code Summary*\n${{ steps.summary.outputs.summary }}"
+            text: "Weekly summary available"
+            blocks:
+              - type: section
+                text:
+                  type: mrkdwn
+                  text: "*Weekly Code Summary*"
+              - type: divider
+              - type: section
+                text:
+                  type: mrkdwn
+                  text: "*Raw Summary:*\n```salt\n${{ steps.summary.outputs.raw }}```"
+              - type: section
+                text:
+                  type: mrkdwn
+                  text: "*Polished Summary:*\n${{ steps.summary.outputs.polished }}"
+
         env:
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
 
