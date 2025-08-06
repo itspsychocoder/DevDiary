@@ -1,0 +1,43 @@
+# .github/workflows/weekly-summary.yml
+name: 📝 Weekly Code Summary to Slack
+
+on:
+  schedule:
+    - cron: '0 10 * * MON'  # Every Monday at 10:00 UTC
+  workflow_dispatch:
+
+jobs:
+  summarize:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v3
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Run Weekly Script (polished)
+        id: summary
+        run: |
+          echo "📊 Generating weekly summary..."
+          OUTPUT=$(node diary.js --polished)
+          echo "summary<<EOF" >> $GITHUB_OUTPUT
+          echo "$OUTPUT" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Send to Slack
+        uses: slackapi/slack-github-action@v2.1.1
+        with:
+          payload: |
+            {
+              "channel": "${{ secrets.SLACK_CHANNEL_ID }}",
+              "text": "*Weekly Code Summary*\n${{ steps.summary.outputs.summary }}"
+            }
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
