@@ -2,39 +2,48 @@ name: 📝 Weekly Code Summary to Slack
 
 on:
   schedule:
-    - cron: '0 15 * * FRI'  # Runs every Friday at 20:00 PKT (15:00 UTC)
+    - cron: '0 15 * * FRI'  # Friday 20:00 PKT (15:00 UTC)
   workflow_dispatch:
 
 jobs:
   summarize:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v3
+      - uses: actions/checkout@v3
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
+      - uses: actions/setup-node@v4
+        with: { node-version: '20' }
 
-      - name: Install dependencies
-        run: npm install
+      - run: npm install
 
-      - name: Run Weekly Script (polished)
+      - name: Run Weekly Script
         id: summary
         env:
           TOKEN_GITHUB: ${{ secrets.TOKEN_GITHUB }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GITHUB_AUTHOR: ${{ secrets.GITHUB_AUTHOR }}
         run: |
           RAW=$(node diary.js)
           POLISHED=$(node diary.js --polished)
-          echo "raw<<EOF" >> $GITHUB_OUTPUT
-          echo "$RAW" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
-          echo "polished<<EOF" >> $GITHUB_OUTPUT
-          echo "$POLISHED" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+          echo "raw<<EOF" >> $GITHUB_OUTPUT && echo "$RAW" >> $GITHUB_OUTPUT && echo "EOF" >> $GITHUB_OUTPUT
+          echo "polished<<EOF" >> $GITHUB_OUTPUT && echo "$POLISHED" >> $GITHUB_OUTPUT && echo "EOF" >> $GITHUB_OUTPUT
+
+          # collect blocks
+          while read -r line; do
+            if [[ "$line" =~ ^block_([0-9]+)<<EOF ]]; then
+              idx=${BASH_REMATCH[1]}
+              readblock=""
+              while read -r inner; do
+                [[ "$inner" == "EOF" ]] && break
+                readblock+="$inner\n"
+              done
+              echo "block_${idx}<<EOF" >> $GITHUB_OUTPUT
+              echo -e "$readblock" >> $GITHUB_OUTPUT
+              echo "EOF" >> $GITHUB_OUTPUT
+            fi
+          done < <(node diary.js --polished)
+          TOTAL=$(node diary.js | grep "^TOTAL_BLOCKS=" | cut -d= -f2)
+          echo "total_blocks=$TOTAL" >> $GITHUB_OUTPUT
 
       - name: Send to Slack
         uses: slackapi/slack-github-action@v2.1.1
@@ -42,23 +51,22 @@ jobs:
           method: chat.postMessage
           token: ${{ secrets.SLACK_BOT_TOKEN }}
           payload: |
-            channel: ${{ secrets.SLACK_CHANNEL_ID }}
-            text: "Weekly summary available"
-            blocks:
-              - type: section
-                text:
-                  type: mrkdwn
-                  text: "*Weekly Code Summary*"
-              - type: divider
-              - type: section
-                text:
-                  type: mrkdwn
-                  text: "*Raw Summary:*\n```salt\n${{ steps.summary.outputs.raw }}```"
-              - type: section
-                text:
-                  type: mrkdwn
-                  text: "*Polished Summary:*\n${{ steps.summary.outputs.polished }}"
-
+            {
+              "channel": "${{ secrets.SLACK_CHANNEL_ID }}",
+              "text": "📣 Weekly Code Summary",
+              "blocks": [
+                { "type": "section", "text": {"type": "mrkdwn","text": "*Weekly Code Summary*" }},
+                { "type": "divider" },
+                $(
+                  for i in $(seq 0 ${{ steps.summary.outputs.total_blocks }});
+                  do echo "{ \"type\":\"section\",\"text\":{\"type\":\"mrkdwn\",\"text\":\"${{ steps.summary.outputs['block_'${i}] }}\" } },";
+                  done
+                ),
+                {
+                  "type":"section",
+                  "text":{"type":"mrkdwn","text":"*Summary (Polished):*\n${{ steps.summary.outputs.polished }}"}
+                }
+              ]
+            }
         env:
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
-
