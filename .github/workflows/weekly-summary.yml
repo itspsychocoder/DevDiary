@@ -1,9 +1,8 @@
-# .github/workflows/weekly-summary.yml
 name: 📝 Weekly Code Summary to Slack
 
 on:
   schedule:
-    - cron: '0 10 * * MON'  # Every Monday at 10:00 UTC
+    - cron: '0 15 * * FRI'  # Runs every Friday at 20:00 PKT (15:00 UTC)
   workflow_dispatch:
 
 jobs:
@@ -24,6 +23,9 @@ jobs:
 
       - name: Run Weekly Script (polished)
         id: summary
+        env:
+          TOKEN_GITHUB: ${{ secrets.TOKEN_GITHUB }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
           echo "📊 Generating weekly summary..."
           OUTPUT=$(node diary.js --polished)

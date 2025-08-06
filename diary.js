@@ -14,7 +14,7 @@ const mode = process.argv.includes("--polished") ? "polished" : "raw";
 const author = "itspsychocoder";
 if (!process.env.TOKEN_GITHUB || !process.env.GEMINI_API_KEY || !author) {
   console.error(
-    "Missing GITHUB_TOKEN, GITHUB_AUTHOR, or GEMINI_API_KEY in .env",
+    "Missing TOKEN_GITHUB, GITHUB_AUTHOR, or GEMINI_API_KEY in .env",
   );
   process.exit(1);
 }
