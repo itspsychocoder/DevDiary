@@ -36,10 +36,11 @@ jobs:
       - name: Send to Slack
         uses: slackapi/slack-github-action@v2.1.1
         with:
+          method: chat.postMessage
+          token: ${{ secrets.SLACK_BOT_TOKEN }}
           payload: |
-            {
-              "channel": "${{ secrets.SLACK_CHANNEL_ID }}",
-              "text": "*Weekly Code Summary*\n${{ steps.summary.outputs.summary }}"
-            }
+            channel: ${{ secrets.SLACK_CHANNEL_ID }}
+            text: "*Weekly Code Summary*\n${{ steps.summary.outputs.summary }}"
         env:
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+
