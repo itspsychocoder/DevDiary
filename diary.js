@@ -12,7 +12,7 @@ const RATE_LIMIT_MS = 300;
 
 const mode = process.argv.includes("--polished") ? "polished" : "raw";
 const author = "itspsychocoder";
-if (!process.env.GITHUB_TOKEN || !process.env.GEMINI_API_KEY || !author) {
+if (!process.env.TOKEN_GITHUB || !process.env.GEMINI_API_KEY || !author) {
   console.error(
     "Missing GITHUB_TOKEN, GITHUB_AUTHOR, or GEMINI_API_KEY in .env",
   );
