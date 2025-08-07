@@ -2,54 +2,51 @@ name: 📝 Weekly Code Summary to Slack
 
 on:
   schedule:
-    - cron: '0 15 * * FRI'  # Runs every Friday at 20:00 PKT (15:00 UTC)
-  workflow_dispatch:
+    - cron: "0 15 * * 5"  # Every Friday at 8 PM PKT (15:00 UTC)
+  workflow_dispatch:  # Allows manual runs too
 
 jobs:
-  summarize:
+  diary:
     runs-on: ubuntu-latest
 
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v3
+    env:
+      TOKEN_GITHUB: ${{ secrets.TOKEN_GITHUB }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
 
-      - name: Set up Node.js
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: 20
 
       - name: Install dependencies
-        run: npm install
+        run: npm ci
 
-      - name: Run Weekly Script and Chunk Output
-        id: summary
-        env:
-          TOKEN_GITHUB: ${{ secrets.TOKEN_GITHUB }}
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      - name: Generate polished weekly summary
+        id: diary
         run: |
-          echo "📦 Generating polished summary..."
-          node diary.js --polished > polished.txt
+          node diary.js --polished > summary.txt
 
-          # Split into chunks using chunk separator
-          csplit -f chunk_ -b "%02d.txt" polished.txt "/---chunk-separator---/" {*}
-
-      - name: Send Polished Summary Chunks to Slack
+      - name: Split summary into chunks
+        id: split
         run: |
-          i=0
-          for f in chunk_*.txt; do
-            content=$(cat "$f")
-            echo "Sending chunk $i..."
+          awk '/^<<CHUNK>>/ {n++; next} {print > ("chunk" n ".txt")}' summary.txt
 
-            jq -n --arg text "*Polished Summary (Part $((i + 1)))*\n$content" \
-              --arg channel "${{ secrets.SLACK_CHANNEL_ID }}" \
-              '{ channel: $channel, text: $text }' > payload.json
-
-            curl -X POST -H "Authorization: Bearer ${{ secrets.SLACK_BOT_TOKEN }}" \
-              -H "Content-Type: application/json" \
-              --data @payload.json \
-              https://slack.com/api/chat.postMessage
-
-            ((i++))
-          done
+      - name: Send polished summary to Slack
+        uses: slackapi/slack-github-action@v2.1.1
+        with:
+          payload-file-path: "./slack-payload.json"
         env:
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+
+      - name: Build Slack message
+        run: |
+          chunks=""
+          for f in chunk*.txt; do
+            text=$(cat "$f" | jq -Rs .)
+            chunks="$chunks, {\"type\": \"section\", \"text\": {\"type\": \"mrkdwn\", \"text\": $text}}"
+          done
+          echo "{\"channel\": \"#your-channel-name\", \"blocks\": [${chunks#,}]}" > slack-payload.json
