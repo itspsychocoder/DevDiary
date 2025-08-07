@@ -3,7 +3,7 @@ name: 📝 Weekly Code Summary to Slack
 on:
   schedule:
     - cron: "0 15 * * 5"  # Every Friday at 8 PM PKT (15:00 UTC)
-  workflow_dispatch:  # Allows manual runs too
+  workflow_dispatch:  # Allow manual trigger
 
 jobs:
   diary:
@@ -31,22 +31,22 @@ jobs:
           node diary.js --polished > summary.txt
 
       - name: Split summary into chunks
-        id: split
         run: |
           awk '/^<<CHUNK>>/ {n++; next} {print > ("chunk" n ".txt")}' summary.txt
 
-      - name: Send polished summary to Slack
-        uses: slackapi/slack-github-action@v2.1.1
-        with:
-          payload-file-path: "./slack-payload.json"
-        env:
-          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
-
-      - name: Build Slack message
+      - name: Build Slack message payload
         run: |
           chunks=""
           for f in chunk*.txt; do
             text=$(cat "$f" | jq -Rs .)
             chunks="$chunks, {\"type\": \"section\", \"text\": {\"type\": \"mrkdwn\", \"text\": $text}}"
           done
-          echo "{\"channel\": \"#your-channel-name\", \"blocks\": [${chunks#,}]}" > slack-payload.json
+          echo "{\"channel\": \"#diary\", \"blocks\": [${chunks#,}]}" > slack-payload.json
+
+      - name: Send to Slack using chat.postMessage
+        uses: slackapi/slack-github-action@v2.1.1
+        with:
+          method: chat.postMessage
+          payload-file-path: ./slack-payload.json
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
