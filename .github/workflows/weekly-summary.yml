@@ -21,62 +21,30 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      - name: Run Weekly Script (Generate Chunks)
+      - name: Run Weekly Script and Chunk Output
         id: summary
         env:
           TOKEN_GITHUB: ${{ secrets.TOKEN_GITHUB }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
-          echo "📦 Generating summaries..."
-          
-          # Save raw summary
-          echo "raw<<EOF" >> $GITHUB_OUTPUT
-          node diary.js >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
-
-          # Save polished summary to file
+          echo "📦 Generating polished summary..."
           node diary.js --polished > polished.txt
 
-          # Split by chunk separator
+          # Split into chunks using chunk separator
           csplit -f chunk_ -b "%02d.txt" polished.txt "/---chunk-separator---/" {*}
-
-          # Store each chunk in GitHub output
-          i=0
-          for f in chunk_*.txt; do
-            content=$(cat "$f")
-            echo "chunk_$i<<EOF" >> $GITHUB_OUTPUT
-            echo "$content" >> $GITHUB_OUTPUT
-            echo "EOF" >> $GITHUB_OUTPUT
-            ((i++))
-          done
-
-      - name: Send Raw Summary to Slack
-        uses: slackapi/slack-github-action@v2.1.1
-        with:
-          method: chat.postMessage
-          token: ${{ secrets.SLACK_BOT_TOKEN }}
-          payload: |
-            channel: ${{ secrets.SLACK_CHANNEL_ID }}
-            text: "🧾 *Weekly Code Summary - Raw*\n```salt\n${{ steps.summary.outputs.raw }}```"
-        env:
-          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
 
       - name: Send Polished Summary Chunks to Slack
         run: |
           i=0
-          while true; do
-            chunk="${{ steps.summary.outputs['chunk_' }}$i${{ ''] }}"
-            if [ -z "$chunk" ]; then
-              break
-            fi
-
+          for f in chunk_*.txt; do
+            content=$(cat "$f")
             echo "Sending chunk $i..."
 
-            jq -n --arg text "*Polished Summary (Part $((i + 1)))*\n$chunk" \
+            jq -n --arg text "*Polished Summary (Part $((i + 1)))*\n$content" \
               --arg channel "${{ secrets.SLACK_CHANNEL_ID }}" \
               '{ channel: $channel, text: $text }' > payload.json
 
-            curl -X POST -H "Authorization: Bearer $SLACK_BOT_TOKEN" \
+            curl -X POST -H "Authorization: Bearer ${{ secrets.SLACK_BOT_TOKEN }}" \
               -H "Content-Type: application/json" \
               --data @payload.json \
               https://slack.com/api/chat.postMessage
