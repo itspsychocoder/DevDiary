@@ -48,5 +48,6 @@ jobs:
         with:
           method: chat.postMessage
           payload-file-path: ./slack-payload.json
+          token: ${{ secrets.SLACK_BOT_TOKEN }}
         env:
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
