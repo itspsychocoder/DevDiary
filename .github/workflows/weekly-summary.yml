@@ -2,71 +2,86 @@ name: 📝 Weekly Code Summary to Slack
 
 on:
   schedule:
-    - cron: '0 15 * * FRI'  # Friday 20:00 PKT (15:00 UTC)
+    - cron: '0 15 * * FRI'  # Runs every Friday at 20:00 PKT (15:00 UTC)
   workflow_dispatch:
 
 jobs:
   summarize:
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v3
+      - name: Check out repository
+        uses: actions/checkout@v3
 
-      - uses: actions/setup-node@v4
-        with: { node-version: '20' }
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
 
-      - run: npm install
+      - name: Install dependencies
+        run: npm install
 
-      - name: Run Weekly Script
+      - name: Run Weekly Script (Generate Chunks)
         id: summary
         env:
           TOKEN_GITHUB: ${{ secrets.TOKEN_GITHUB }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          GITHUB_AUTHOR: ${{ secrets.GITHUB_AUTHOR }}
         run: |
-          RAW=$(node diary.js)
-          POLISHED=$(node diary.js --polished)
-          echo "raw<<EOF" >> $GITHUB_OUTPUT && echo "$RAW" >> $GITHUB_OUTPUT && echo "EOF" >> $GITHUB_OUTPUT
-          echo "polished<<EOF" >> $GITHUB_OUTPUT && echo "$POLISHED" >> $GITHUB_OUTPUT && echo "EOF" >> $GITHUB_OUTPUT
+          echo "📦 Generating summaries..."
+          
+          # Save raw summary
+          echo "raw<<EOF" >> $GITHUB_OUTPUT
+          node diary.js >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
 
-          # collect blocks
-          while read -r line; do
-            if [[ "$line" =~ ^block_([0-9]+)<<EOF ]]; then
-              idx=${BASH_REMATCH[1]}
-              readblock=""
-              while read -r inner; do
-                [[ "$inner" == "EOF" ]] && break
-                readblock+="$inner\n"
-              done
-              echo "block_${idx}<<EOF" >> $GITHUB_OUTPUT
-              echo -e "$readblock" >> $GITHUB_OUTPUT
-              echo "EOF" >> $GITHUB_OUTPUT
-            fi
-          done < <(node diary.js --polished)
-          TOTAL=$(node diary.js | grep "^TOTAL_BLOCKS=" | cut -d= -f2)
-          echo "total_blocks=$TOTAL" >> $GITHUB_OUTPUT
+          # Save polished summary to file
+          node diary.js --polished > polished.txt
 
-      - name: Send to Slack
+          # Split by chunk separator
+          csplit -f chunk_ -b "%02d.txt" polished.txt "/---chunk-separator---/" {*}
+
+          # Store each chunk in GitHub output
+          i=0
+          for f in chunk_*.txt; do
+            content=$(cat "$f")
+            echo "chunk_$i<<EOF" >> $GITHUB_OUTPUT
+            echo "$content" >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
+            ((i++))
+          done
+
+      - name: Send Raw Summary to Slack
         uses: slackapi/slack-github-action@v2.1.1
         with:
           method: chat.postMessage
           token: ${{ secrets.SLACK_BOT_TOKEN }}
           payload: |
-            {
-              "channel": "${{ secrets.SLACK_CHANNEL_ID }}",
-              "text": "📣 Weekly Code Summary",
-              "blocks": [
-                { "type": "section", "text": {"type": "mrkdwn","text": "*Weekly Code Summary*" }},
-                { "type": "divider" },
-                $(
-                  for i in $(seq 0 ${{ steps.summary.outputs.total_blocks }});
-                  do echo "{ \"type\":\"section\",\"text\":{\"type\":\"mrkdwn\",\"text\":\"${{ steps.summary.outputs['block_'${i}] }}\" } },";
-                  done
-                ),
-                {
-                  "type":"section",
-                  "text":{"type":"mrkdwn","text":"*Summary (Polished):*\n${{ steps.summary.outputs.polished }}"}
-                }
-              ]
-            }
+            channel: ${{ secrets.SLACK_CHANNEL_ID }}
+            text: "🧾 *Weekly Code Summary - Raw*\n```salt\n${{ steps.summary.outputs.raw }}```"
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+
+      - name: Send Polished Summary Chunks to Slack
+        run: |
+          i=0
+          while true; do
+            chunk="${{ steps.summary.outputs['chunk_' }}$i${{ ''] }}"
+            if [ -z "$chunk" ]; then
+              break
+            fi
+
+            echo "Sending chunk $i..."
+
+            jq -n --arg text "*Polished Summary (Part $((i + 1)))*\n$chunk" \
+              --arg channel "${{ secrets.SLACK_CHANNEL_ID }}" \
+              '{ channel: $channel, text: $text }' > payload.json
+
+            curl -X POST -H "Authorization: Bearer $SLACK_BOT_TOKEN" \
+              -H "Content-Type: application/json" \
+              --data @payload.json \
+              https://slack.com/api/chat.postMessage
+
+            ((i++))
+          done
         env:
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
