@@ -79,7 +79,20 @@ async function rewriteWithGemini(raw) {
       contents: [
         {
           role: "user",
-          parts: [{ text: `Summarize professionally:\n\n${chunk}` }],
+          parts: [{ text: `I will give you my GitHub commits for the week in the format:
+
+### YYYY-MM-DD
+- {repo name} commit message
+- {repo name} commit message
+
+Your task:  
+1. Read all commits carefully.  
+2. Summarize what I accomplished each day in simple language (not just restating commit messages).  
+3. Group related commits together into meaningful activities.  
+4. Keep the summaries concise but informative (2–5 bullet points per day).  
+5. Highlight any patterns across days if relevant (e.g., if I worked on a feature for multiple days).  
+
+Now here are the commits::\n\n${chunk}` }],
         },
       ],
     });
